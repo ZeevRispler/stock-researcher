@@ -1,4 +1,4 @@
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from models import StockState
 from config import OPENAI_API_KEY
 import json

@@ -1,20 +1,21 @@
 # Core dependencies for Langchain and agentic workflows
-langchain==0.2.1
-langgraph==0.0.60
-langchain-openai==0.1.8
-openai>=1.12.0
+langchain
+langgraph
+langchain-openai
+openai
+langchain_core
 
 # Tool for the Market Data agent
-tavily-python==0.3.3
+langchain_tavily
 
 # Validation framework
-deepeval==0.21.43
+deepeval
 
 # For creating the web interface
-gradio==4.31.0
+gradio
 
 # For loading environment variables from a .env file
-python-dotenv==1.0.1
+python-dotenv
 
 # Core data modeling library
-pydantic>=2.7.0
+pydantic

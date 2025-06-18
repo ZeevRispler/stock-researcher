@@ -1,22 +1,22 @@
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain_community.tools.tavily_search import TavilySearchResults
+from click import prompt
+from langgraph.prebuilt import create_react_agent
+from langchain_tavily import TavilySearch
 from langchain_openai import ChatOpenAI
-from langchain import hub
 
 from models import StockState
 from config import TAVILY_API_KEY, OPENAI_API_KEY, OPENAI_API_BASE
 
 # 1. Define the tool(s) the agent can use.
 # The agent has access to the Tavily search engine.
-search_tool = TavilySearchResults(
+search_tool = TavilySearch(
     max_results=7, tavily_api_key=TAVILY_API_KEY
 )
 tools = [search_tool]
 
-# 2. Create the ReAct agent
-# Pull the standard ReAct prompt template from LangChain Hub
-prompt_template = hub.pull("hwchase17/react")
 
+agent_prompt = """ You are a agent designed to gather comprehensive market data for stocks.
+You will use the Tavily search tool to find information about stocks.
+break down the task into smaller steps, using the search tool to find information."""
 # Create the LLM instance that will power the agent
 llm = ChatOpenAI(
     model="gpt-4o-mini",
@@ -26,16 +26,7 @@ llm = ChatOpenAI(
 )
 
 # Create the agent by combining the LLM, tools, and prompt
-react_agent = create_react_agent(llm, tools, prompt_template)
-
-# Create the executor, which is the runtime for the agent
-agent_executor = AgentExecutor(
-    agent=react_agent,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True,  # Makes the agent more robust
-)
-
+react_agent = create_react_agent(llm, tools, agent_prompt)
 
 class MarketDataAgent:
     """
@@ -69,7 +60,7 @@ class MarketDataAgent:
 
             try:
                 # Invoke the agent executor to run the ReAct loop.
-                response = agent_executor.invoke({"input": prompt})
+                response = react_agent.invoke({"input": prompt})
                 output_text = response["output"]
 
                 # Update the state with the collected data

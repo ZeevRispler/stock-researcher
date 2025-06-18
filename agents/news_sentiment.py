@@ -1,4 +1,3 @@
-import json
 from deepeval.metrics import SummarizationMetric
 from deepeval.test_case import LLMTestCase
 from langchain_core.pydantic_v1 import BaseModel, Field
