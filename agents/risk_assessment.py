@@ -1,34 +1,12 @@
-import json
 from deepeval.metrics import FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
-from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-
+from models import RiskData
 from config import OPENAI_API_KEY, OPENAI_API_BASE
-
-
-class RiskData(BaseModel):
-    """
-    The result of risk analysis for a stock.
-    - volatility: The volatility of the stock, can be "high", "medium" or "low".
-    - beta: The beta of the stock.
-    - risk_factors: A list of risk factors for the stock.
-    - risk_score: A score from 1-10 (10 = highest risk).
-    """
-
-    volatility: str = Field(
-        ..., description='The volatility of the stock, can be "high", "medium" or "low".'
-    )
-    beta: float | None = Field(..., description="The beta of the stock.")
-    risk_factors: list[str] = Field(
-        ..., description="A list of risk factors for the stock."
-    )
-    risk_score: int = Field(..., description="A score from 1-10 (10 = highest risk).")
 
 
 class RiskAssessmentAgent:
     def __init__(self):
-        # Only pass base_url if it's not the default
         kwargs = {
             "model": "gpt-4o-mini",
             "api_key": OPENAI_API_KEY,
@@ -39,13 +17,23 @@ class RiskAssessmentAgent:
         self.llm = ChatOpenAI(**kwargs).with_structured_output(RiskData)
         self.validator = FaithfulnessMetric(threshold=0.7, model="gpt-4o-mini")
 
+    def _should_validate(self, risk_data: RiskData) -> bool:
+        """Determine if deep validation is needed based on confidence."""
+        # Use DeepEval only when confidence is low or data is incomplete
+        if risk_data.confidence_score < 0.7:
+            return True
+        if risk_data.data_completeness in ["limited", "partial"]:
+            return True
+        # Always validate if beta is missing (important metric)
+        if risk_data.beta is None:
+            return True
+        return False
+
     def __call__(self, state: dict) -> dict:
         print("Running RiskAssessmentAgent...")
         state["messages"].append("Assessing stock risks...")
 
         for ticker in state["query"]["tickers"]:
-            # We now use the clean, synthesized text block from the ReAct agent
-            # instead of parsing raw, unstructured search results.
             context = state["stocks_data"][ticker].get("market_data", "")
             if not context:
                 state["error_messages"].append(
@@ -54,57 +42,67 @@ class RiskAssessmentAgent:
                 continue
 
             prompt = f"""
-            Analyze the risk profile for the stock with the ticker {ticker}, based on the following context.
-            Pay special attention to market volatility, beta, and any mentioned competitive, regulatory, or operational risks.
-
+            Analyze the risk profile for stock {ticker}.
             Context:
             ---
             {context}
             ---
 
-            Respond with a JSON object that strictly follows this schema:
-            {{
-                "volatility": "high" | "medium" | "low",
-                "beta": float_value | null,
-                "risk_factors": ["factor_1", "factor_2", ...],
-                "risk_score": integer_from_1_to_10
-            }}
+            Provide confidence_score (0-1) based on:
+            - Availability of key metrics (beta, volatility data)
+            - Quality of risk factor information
+            - Completeness of financial data
+
+            Set data_completeness:
+            - "complete": All key risk metrics available
+            - "partial": Some metrics missing but enough for assessment
+            - "limited": Missing critical risk information
+
+            Respond with JSON matching the RiskData schema.
             """
 
             try:
                 risk_data: RiskData = self.llm.invoke(prompt)
 
-                # Validate the extracted data is faithful to the new, higher-quality context
-                test_case = LLMTestCase(
-                    input=prompt,
-                    actual_output=json.dumps(risk_data.dict()),
-                    retrieval_context=[context]  # Changed from 'context' to 'retrieval_context'
-                )
+                # Only run expensive validation if confidence/completeness is low
+                if self._should_validate(risk_data):
+                    state["messages"].append(f"-> {ticker} low confidence, running validation...")
 
-                self.validator.measure(test_case)
-                score = self.validator.score
-                print(f"Faithfulness metric score for {ticker} risk: {score}")
-
-                if score > 0.7:
-                    state["stocks_data"][ticker]["risk_assessment"] = risk_data.dict()
-                    state["messages"].append(
-                        f"-> {ticker} risk assessment validated ({score})"
+                    test_case = LLMTestCase(
+                        input=prompt,
+                        actual_output=str(risk_data.model_dump()),
+                        retrieval_context=[context]
                     )
+
+                    self.validator.measure(test_case)
+                    score = self.validator.score
+
+                    if score < 0.7:
+                        state["messages"].append(
+                            f"-> {ticker} risk assessment failed validation ({score})"
+                        )
+                    else:
+                        state["messages"].append(
+                            f"-> {ticker} risk assessment validated ({score})"
+                        )
                 else:
                     state["messages"].append(
-                        f"-> {ticker} risk assessment validation warning ({score})"
+                        f"-> {ticker} high confidence ({risk_data.confidence_score}), skipping validation"
                     )
-                    # Still use the data but note the warning
-                    state["stocks_data"][ticker]["risk_assessment"] = risk_data.model_dump()
+
+                state["stocks_data"][ticker]["risk_assessment"] = risk_data
 
             except Exception as e:
                 state["error_messages"].append(f"Error assessing risk for {ticker}: {str(e)}")
                 # Add default values so workflow can continue
-                state["stocks_data"][ticker]["risk_assessment"] = {
-                    "volatility": "unknown",
-                    "beta": None,
-                    "risk_factors": ["Risk assessment failed"],
-                    "risk_score": 5,
-                }
-        print(f"Risk assessment state: {state['stocks_data']}")
+                default_risk = RiskData(
+                    volatility="unknown",
+                    beta=None,
+                    risk_factors=["Risk assessment failed"],
+                    risk_score=5,
+                    confidence_score=0.0,
+                    data_completeness="limited"
+                )
+                state["stocks_data"][ticker]["risk_assessment"] = default_risk
+
         return state
