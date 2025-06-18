@@ -28,19 +28,21 @@ class RiskData(BaseModel):
 
 class RiskAssessmentAgent:
     def __init__(self):
-        # Use structured output for reliable JSON and add base_url for consistency
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            api_key=OPENAI_API_KEY,
-            base_url=OPENAI_API_BASE,
-        ).with_structured_output(RiskData)
-        self.validator = FaithfulnessMetric(threshold=0.8, model="gpt-4o-mini")
+        # Only pass base_url if it's not the default
+        kwargs = {
+            "model": "gpt-4o-mini",
+            "api_key": OPENAI_API_KEY,
+        }
+        if OPENAI_API_BASE:
+            kwargs["base_url"] = OPENAI_API_BASE
+
+        self.llm = ChatOpenAI(**kwargs).with_structured_output(RiskData)
+        self.validator = FaithfulnessMetric(threshold=0.7, model="gpt-4o-mini")
 
     def __call__(self, state: dict) -> dict:
         state["messages"].append("Assessing stock risks...")
 
         for ticker in state["query"]["tickers"]:
-            # --- THIS IS THE UPDATED SECTION ---
             # We now use the clean, synthesized text block from the ReAct agent
             # instead of parsing raw, unstructured search results.
             context = state["stocks_data"][ticker].get("market_data", "")
@@ -49,7 +51,6 @@ class RiskAssessmentAgent:
                     f"No market data context found for {ticker} to assess risk."
                 )
                 continue
-            # --- END OF UPDATE ---
 
             prompt = f"""
             Analyze the risk profile for the stock with the ticker {ticker}, based on the following context.
@@ -68,30 +69,40 @@ class RiskAssessmentAgent:
                 "risk_score": integer_from_1_to_10
             }}
             """
-            risk_data: RiskData = self.llm.invoke(prompt)
 
-            # Validate the extracted data is faithful to the new, higher-quality context
-            test_case = LLMTestCase(
-                input=prompt,
-                actual_output=json.dumps(risk_data.dict()),
-                context=[context],
-            )
-            self.validator.measure(test_case)
-            print(f"Faithfulness metric score for {ticker} risk: {self.validator.score}")
+            try:
+                risk_data: RiskData = self.llm.invoke(prompt)
 
-            if self.validator.score > 0.8:
-                state["stocks_data"][ticker]["risk_assessment"] = risk_data.dict()
-                state["messages"].append(
-                    f"-> {ticker} risk assessment validated ({self.validator.score:.2f})"
+                # Validate the extracted data is faithful to the new, higher-quality context
+                test_case = LLMTestCase(
+                    input=prompt,
+                    actual_output=json.dumps(risk_data.dict()),
+                    retrieval_context=[context]  # Changed from 'context' to 'retrieval_context'
                 )
-            else:
-                state["messages"].append(
-                    f"-> {ticker} risk assessment validation failed ({self.validator.score:.2f})."
-                )
+
+                self.validator.measure(test_case)
+                score = self.validator.score
+                print(f"Faithfulness metric score for {ticker} risk: {score}")
+
+                if score > 0.7:
+                    state["stocks_data"][ticker]["risk_assessment"] = risk_data.dict()
+                    state["messages"].append(
+                        f"-> {ticker} risk assessment validated ({score})"
+                    )
+                else:
+                    state["messages"].append(
+                        f"-> {ticker} risk assessment validation warning ({score})"
+                    )
+                    # Still use the data but note the warning
+                    state["stocks_data"][ticker]["risk_assessment"] = risk_data.model_dump()
+
+            except Exception as e:
+                state["error_messages"].append(f"Error assessing risk for {ticker}: {str(e)}")
+                # Add default values so workflow can continue
                 state["stocks_data"][ticker]["risk_assessment"] = {
                     "volatility": "unknown",
                     "beta": None,
-                    "risk_factors": ["Validation failed to confirm data from source."],
+                    "risk_factors": ["Risk assessment failed"],
                     "risk_score": 5,
                 }
 

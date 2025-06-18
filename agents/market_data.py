@@ -16,11 +16,12 @@ llm = ChatOpenAI(
     model="gpt-4o-mini",
     api_key=OPENAI_API_KEY,
     base_url=OPENAI_API_BASE,
-    temperature=0,
+    temperature=0.3,
 )
 
 # Create the agent by combining the LLM, tools, and prompt
 react_agent = create_react_agent(llm, tools)
+
 
 class MarketDataAgent:
     """
@@ -31,14 +32,18 @@ class MarketDataAgent:
     def __call__(self, state: dict) -> dict:
         state["messages"].append("Fetching market data with ReAct agent...")
 
-        for ticker in state["query"]["tickers"]:
+        tickers = state["query"].get("tickers", [])
+        if not tickers:
+            state["error_messages"].append("No tickers found to analyze")
+            return state
+
+        for ticker in tickers:
             state["messages"].append(f"-> Running ReAct agent for {ticker}...")
 
             # Define the detailed goal for the ReAct agent.
             # It is prompted to produce a single text block that downstream
             # agents can process, maintaining compatibility.
             prompt = f"""
-            You are a market data analysis agent, breaking down complex queries and 
             Gather comprehensive, up-to-date market data for the stock with ticker {ticker}.
             You must find and include the following information in your final answer:
             1.  Current stock price.
@@ -55,8 +60,21 @@ class MarketDataAgent:
 
             try:
                 # Invoke the agent executor to run the ReAct loop.
-                response = react_agent.invoke({"input": prompt})
-                output_text = response["output"]
+                response = react_agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+
+                # Extract the output from the response
+                if isinstance(response, dict):
+                    # Try different possible response formats
+                    output_text = response.get("output", "") or response.get("content", "") or str(response)
+                    if "messages" in response and response["messages"]:
+                        # Get the last message if it's a list of messages
+                        last_message = response["messages"][-1]
+                        if isinstance(last_message, dict):
+                            output_text = last_message.get("content", str(last_message))
+                        else:
+                            output_text = str(last_message)
+                else:
+                    output_text = str(response)
 
                 # Update the state with the collected data
                 if ticker not in state["stocks_data"]:
@@ -70,5 +88,10 @@ class MarketDataAgent:
                 error_message = f"Error running ReAct agent for {ticker}: {str(e)}"
                 state["error_messages"].append(error_message)
                 state["messages"].append(error_message)
+
+                # Add some dummy data so the workflow can continue
+                if ticker not in state["stocks_data"]:
+                    state["stocks_data"][ticker] = {}
+                state["stocks_data"][ticker]["market_data"] = f"Failed to fetch data for {ticker}"
 
         return state

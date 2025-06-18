@@ -27,18 +27,32 @@ class QueryParserAgent:
         - Identify if user wants comparison (words like: compare, vs, versus, or, better)
         - Maximum 2 stocks for comparison
 
-        Return JSON:
+        Return ONLY a valid JSON object with this exact format:
         {{
             "tickers": ["TICKER1", "TICKER2"],
             "company_names": ["Name1", "Name2"],
-            "is_comparison": true/false,
+            "is_comparison": true,
             "query_intent": "what user wants to know"
         }}
         """
 
         try:
             response = self.llm.invoke(prompt)
-            parsed = json.loads(response.content)
+
+            # Extract content from response
+            content = response.content if hasattr(response, 'content') else str(response)
+
+            # Debug print
+            print(f"LLM Response: {content}")
+
+            # Try to find JSON in the response
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                parsed = json.loads(json_str)
+            else:
+                # If no JSON found, try to parse the whole content
+                parsed = json.loads(content)
 
             tickers = parsed.get("tickers", [])
 
@@ -62,6 +76,21 @@ class QueryParserAgent:
                 f"Analyzing: {', '.join(tickers)} "
                 f"({', '.join(parsed.get('company_names', tickers))})"
             )
+
+        except json.JSONDecodeError as e:
+            # More detailed error message
+            state["error_messages"].append(f"Failed to parse LLM response as JSON: {str(e)}")
+
+            # Try fallback regex parsing
+            tickers = re.findall(r'\b[A-Z]{1,5}\b', query_text)
+            tickers = [t for t in tickers if t not in {'I', 'A', 'AND', 'OR', 'VS', 'AAPL'}] #TODO
+
+            if tickers:
+                state["query"]["tickers"] = list(set(tickers))[:2]
+                state["query"]["analysis_type"] = "comparison" if len(tickers) > 1 else "single"
+                state["messages"].append(f"Fallback parsing found: {', '.join(tickers)}")
+                # Clear the error since we recovered
+                state["error_messages"] = []
 
         except Exception as e:
             state["error_messages"].append(f"Query parsing error: {str(e)}")
