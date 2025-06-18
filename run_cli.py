@@ -24,22 +24,22 @@ def main():
     print("✅ Research Complete")
     print("─" * 20 + "\n")
 
-    if final_state.error_messages:
+    if final_state.get("error_messages"):
         print("❌ Errors Occurred:")
-        for error in final_state.error_messages:
+        for error in final_state["error_messages"]:
             print(f"- {error}")
     else:
-        if final_state.executive_summary:
+        if final_state.get("executive_summary"):
             print("📝 Executive Summary:")
-            print(final_state.executive_summary)
+            print(final_state["executive_summary"])
 
-        if final_state.comparison_dashboard:
-            print(final_state.comparison_dashboard)
+        if final_state.get("comparison_dashboard"):
+            print(final_state["comparison_dashboard"])
 
     print("\n" + "─" * 20)
     print("🕵️ Agent Messages")
     print("─" * 20)
-    for msg in final_state.messages:
+    for msg in final_state.get("messages", []):
         print(f"- {msg}")
 
 

@@ -3,7 +3,7 @@ from .market_data import MarketDataAgent
 from .news_sentiment import NewsSentimentAgent
 from .risk_assessment import RiskAssessmentAgent
 from .synthesis import SynthesisAgent
-from .validation import validate_results
+from .validation import ValidationAgent
 
 __all__ = [
     "QueryParserAgent",
@@ -11,5 +11,5 @@ __all__ = [
     "NewsSentimentAgent",
     "RiskAssessmentAgent",
     "SynthesisAgent",
-    "validate_results",
+    "ValidationAgent",
 ]

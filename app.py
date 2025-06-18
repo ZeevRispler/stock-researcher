@@ -17,25 +17,25 @@ def run_research(query: str):
     try:
         final_state = workflow.run(query)
 
-        if final_state.error_messages:
-            return f"An error occurred: {final_state.error_messages[0]}"
+        if final_state.get("error_messages"):
+            return f"An error occurred: {final_state['error_messages'][0]}"
 
         # Format the output for Gradio's Markdown component
         output = ""
-        if final_state.executive_summary:
+        if final_state.get("executive_summary"):
             output += (
                 "## 📝 Executive Summary\n\n"
-                f"{final_state.executive_summary}\n\n"
+                f"{final_state['executive_summary']}\n\n"
             )
 
-        if final_state.comparison_dashboard:
+        if final_state.get("comparison_dashboard"):
             output += (
                 "## 📊 Comparison Dashboard\n\n"
-                f"```\n{final_state.comparison_dashboard}\n```\n\n"
+                f"```\n{final_state['comparison_dashboard']}\n```\n\n"
             )
 
         output += "---\n\n### 🕵️ Agent Log\n\n"
-        output += "\n".join([f"- {msg}" for msg in final_state.messages])
+        output += "\n".join([f"- {msg}" for msg in final_state.get("messages", [])])
         return output
 
     except Exception as e:
