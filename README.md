@@ -1,49 +1,54 @@
 # Multi-Agent Stock Research System
 
-This project is a multi-agent stock research system built using LangGraph, Tavily, and OpenAI. It can understand natural language queries to research a single stock or compare two, performing data collection, news analysis, and risk assessment.
+A sophisticated stock analysis system built with **LangGraph**, **Tavily**, and **OpenAI** that uses multiple AI agents to research stocks and generate comprehensive reports.
 
-## Features
+## 🚀 Quick Start
 
-- **Natural Language Queries**: Ask questions like "Analyze NVDA" or "Compare Apple and Microsoft".
-- **Multi-Agent Workflow**: Uses separate agents for parsing, data gathering, analysis, and synthesis.
-- **Single & Comparison Analysis**: Generates an executive summary for single stocks and a comparison dashboard for two.
-- **Data-Backed Analysis**: Fetches real-time information using the Tavily search API.
-- **Built-in Validation**: Includes a validation agent to check the quality of the generated report.
-
-## Setup
-
-1.  **Clone the Repository**
-    ```bash
-    git clone <your-repo-url>
-    cd stock-researcher
-    ```
-
-2.  **Create a Virtual Environment**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-    ```
-
-3.  **Install Dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-4.  **Configure Environment Variables**
-    - Rename the `.env.example` file to `.env`.
-    - Add your API keys for Tavily and OpenAI to the `.env` file.
-    ```
-    TAVILY_API_KEY="tvly-..."
-    OPENAI_API_KEY="sk-..."
-    ```
-
-## Usage
-
-You can run the system via a command-line interface or a Gradio web UI.
-
-**1. Command-Line Interface (CLI)**
-
-Execute `run_cli.py` with your query as an argument.
-
+### 1. Setup
 ```bash
-python run_cli.py "What is the risk profile for Tesla?"
+git clone <your-repo-url>
+cd stock-researcher
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2. Configure Environment
+Rename `.env.example` to `.env` and add your API keys:
+```env
+TAVILY_API_KEY="tvly-..."
+OPENAI_API_KEY="sk-..."
+```
+
+### 3. Run the System
+
+**CLI Interface:**
+```bash
+python run_cli.py "Compare Tesla vs Ford"
+```
+
+**Web Interface:**
+```bash
+python app.py
+```
+
+## 🤖 How It Works
+
+1. **Query Parser**: Extracts stock tickers and determines analysis type (single vs comparison)
+2. **Market Data Agent**: Uses ReAct pattern with Tavily to gather comprehensive market data
+3. **News Sentiment Agent**: Analyzes recent news and sentiment with confidence scoring
+4. **Risk Assessment Agent**: Evaluates volatility, beta, and risk factors
+5. **Synthesis Agent**: Creates executive summaries or comparison dashboards
+6. **Validation Agent**: Uses DeepEval to ensure report quality and factual accuracy
+
+### ⚡ Performance Optimization
+- **Confidence-Based Validation**: Only runs expensive DeepEval when AI confidence is low (<0.7)
+- **Minimal API Calls**: 1-2 Tavily searches total, agents share data efficiently
+- **Smart Retry Logic**: Auto-corrects failed validations once before providing results
+
+## 📋 Example Queries
+
+- `"Analyze GOOGL"` → Executive summary with sentiment and risk analysis
+- `"Compare Apple and Microsoft"` → Side-by-side comparison with winner recommendation  
+- `"NVDA vs AMD stock analysis"` → Detailed comparison of semiconductor stocks
+- `"What is the risk profile for Tesla?"` → Focus on risk assessment and volatility
