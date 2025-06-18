@@ -40,6 +40,7 @@ class RiskAssessmentAgent:
         self.validator = FaithfulnessMetric(threshold=0.7, model="gpt-4o-mini")
 
     def __call__(self, state: dict) -> dict:
+        print("Running RiskAssessmentAgent...")
         state["messages"].append("Assessing stock risks...")
 
         for ticker in state["query"]["tickers"]:
@@ -105,5 +106,5 @@ class RiskAssessmentAgent:
                     "risk_factors": ["Risk assessment failed"],
                     "risk_score": 5,
                 }
-
+        print(f"Risk assessment state: {state['stocks_data']}")
         return state

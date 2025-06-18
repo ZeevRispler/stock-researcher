@@ -50,12 +50,15 @@ class ValidationAgent:
             print(f"Relevancy validation error: {e}")
             rel_score = 0.0
 
+        print(f"Faithfulness score: {faith_score}, Relevancy score: {rel_score}")
+
         # Store results
         passed = faith_score > 0.7 and rel_score > 0.7
-
-        val_result = state.get("validation_result", {})
-        attempt = val_result.get("attempt", 0) + 1
-
+        validation_result = state.get("validation_result", {})
+        if validation_result:
+            attempt = validation_result.get("attempt", 1) + 1
+        else:
+            attempt = 1
         state["validation_result"] = {
             "passed": passed,
             "scores": {

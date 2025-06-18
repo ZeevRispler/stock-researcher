@@ -30,6 +30,7 @@ class MarketDataAgent:
     """
 
     def __call__(self, state: dict) -> dict:
+        print("Running MarketDataAgent...")
         state["messages"].append("Fetching market data with ReAct agent...")
 
         tickers = state["query"].get("tickers", [])
@@ -93,5 +94,5 @@ class MarketDataAgent:
                 if ticker not in state["stocks_data"]:
                     state["stocks_data"][ticker] = {}
                 state["stocks_data"][ticker]["market_data"] = f"Failed to fetch data for {ticker}"
-
+        print(f"Market data state: {state['stocks_data']}")
         return state

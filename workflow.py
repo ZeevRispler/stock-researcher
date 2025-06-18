@@ -51,8 +51,7 @@ class Workflow:
             "parse_query", self.decide_after_parsing
         )
         self.graph.add_edge("get_market_data", "analyze_news")
-        self.graph.add_edge("get_market_data", "assess_risk")
-        self.graph.add_edge("analyze_news", "synthesize_report")
+        self.graph.add_edge("analyze_news", "assess_risk")
         self.graph.add_edge("assess_risk", "synthesize_report")
         self.graph.add_edge("synthesize_report", "validate_report")
         self.graph.add_conditional_edges(

@@ -11,6 +11,7 @@ class SynthesisAgent:
 
     def __call__(self, state: dict) -> dict:
         """Generate outputs"""
+        print("Running SynthesisAgent...")
 
         guidance = ""
         if state.get("needs_retry", False):
@@ -76,5 +77,7 @@ Volatility          {d1.get('risk_assessment', {}).get('volatility', 'N/A'):>6} 
 ═══════════════════════════════════════════════════════════
 Overall Winner: {t1 if (sentiment1 > sentiment2 and risk1 <= risk2) else t2}
 """
-
+        print("Synthesis complete.")
+        print("-" * 40)
+        print(state["executive_summary"])
         return state

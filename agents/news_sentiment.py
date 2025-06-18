@@ -38,6 +38,7 @@ class NewsSentimentAgent:
         self.validator = FaithfulnessMetric(threshold=0.7, model="gpt-4o-mini")
 
     def __call__(self, state: dict) -> dict:
+        print("Running NewsSentimentAgent...")
         state["messages"].append("Analyzing news sentiment...")
 
         for ticker in state["query"]["tickers"]:
@@ -101,5 +102,6 @@ class NewsSentimentAgent:
                     "notable_events": ["Analysis failed"],
                     "summary": "Failed to analyze news sentiment"
                 }
+        print(f"News sentiment state: {state['stocks_data']}")
 
         return state
