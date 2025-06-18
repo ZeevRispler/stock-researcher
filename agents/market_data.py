@@ -1,32 +1,26 @@
-from click import prompt
 from langgraph.prebuilt import create_react_agent
 from langchain_tavily import TavilySearch
 from langchain_openai import ChatOpenAI
 
-from models import StockState
+from models import StockState, StockData
 from config import TAVILY_API_KEY, OPENAI_API_KEY, OPENAI_API_BASE
 
 # 1. Define the tool(s) the agent can use.
-# The agent has access to the Tavily search engine.
 search_tool = TavilySearch(
     max_results=7, tavily_api_key=TAVILY_API_KEY
 )
 tools = [search_tool]
 
-
-agent_prompt = """ You are a agent designed to gather comprehensive market data for stocks.
-You will use the Tavily search tool to find information about stocks.
-break down the task into smaller steps, using the search tool to find information."""
 # Create the LLM instance that will power the agent
 llm = ChatOpenAI(
-    model="gpt-4o-mini",
+    model="gpt-4o",
     api_key=OPENAI_API_KEY,
     base_url=OPENAI_API_BASE,
     temperature=0,
 )
 
-# Create the agent by combining the LLM, tools, and prompt
-react_agent = create_react_agent(llm, tools, agent_prompt)
+# Create the agent by combining the LLM, tools, and a prompt
+react_agent = create_react_agent(llm, tools)
 
 class MarketDataAgent:
     """
@@ -41,9 +35,9 @@ class MarketDataAgent:
             state.messages.append(f"-> Running ReAct agent for {ticker}...")
 
             # Define the detailed goal for the ReAct agent.
-            # It is prompted to produce a single text block that downstream
-            # agents can process, maintaining compatibility.
             prompt = f"""
+            You are a ReAct agent designed to gather comprehensive market data for stocks.
+            Your task is to use the Tavily search tool to find and
             Gather comprehensive, up-to-date market data for the stock with ticker {ticker}.
             You must find and include the following information in your final answer:
             1.  Current stock price.
@@ -56,17 +50,18 @@ class MarketDataAgent:
             Synthesize all of this information into a single, well-formatted text block.
             Your final answer should be just this text block, not a JSON object, as it
             will be passed to other agents for analysis.
+            While using the tavily search tool, break down the task into smaller steps
+            to improve the search results.
             """
 
             try:
                 # Invoke the agent executor to run the ReAct loop.
-                response = react_agent.invoke({"input": prompt})
-                output_text = response["output"]
+                response = react_agent.invoke({"messages": [("user", prompt)]})
+                output_text = response["messages"][-1].content
 
-                # Update the state with the collected data
-                if ticker not in state.stocks_data:
-                    state.stocks_data[ticker] = {}
-                state.stocks_data[ticker]["market_data"] = output_text
+                # Create a StockData instance and add it to the state
+                state.stocks_data[ticker] = StockData(market_data=output_text)
+
                 state.messages.append(
                     f"-> Successfully gathered market data for {ticker}."
                 )

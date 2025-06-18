@@ -1,46 +1,44 @@
-from typing import TypedDict, List, Dict, Any, Optional
+# zeevrispler/stock-researcher/stock-researcher-4b3618e2c0950ebe10c63249519e1b2dbb61748a/models.py
+from typing import List, Dict, Any, Optional
 from enum import Enum
 from pydantic import BaseModel, Field
 
 
-class AnalysisType(str, Enum):
-    """Type of analysis to perform."""
-
-    SINGLE = "single"
+class AnalysisType(Enum):
+    SINGLE_STOCK = "single_stock"
     COMPARISON = "comparison"
 
 
 class StockQuery(BaseModel):
-    """Represents the parsed user query."""
+    user_input: str
+    tickers: List[str]
+    analysis_type: Optional[AnalysisType] = None
 
-    user_input: str = ""
-    tickers: List[str] = Field(default_factory=list)
-    company_names: List[str] = Field(default_factory=list)
-    analysis_type: AnalysisType = AnalysisType.SINGLE
+
+class StockData(BaseModel):
+    """Holds all the data collected for a single stock."""
+    market_data: Optional[str] = None
+    sentiment_analysis: Optional[str] = None
+    risk_analysis: Optional[str] = None
 
 
 class ValidationResult(BaseModel):
-    """Holds the result of a validation step."""
+    is_faithful: bool
+    faithfulness_score: float
+    is_relevant: bool
+    relevancy_score: float
 
-    passed: bool
-    scores: Dict[str, float]
-    attempt: int
 
-
-# The main state passed between agents, defined as a Pydantic model
-# for structured, attribute-accessible state management.
 class StockState(BaseModel):
-    """Represents the state of the stock research workflow."""
+    """Represents the state of our workflow."""
+    query: StockQuery
+    # The new central data store, replacing the old `stocks` field.
+    stocks_data: Dict[str, StockData] = Field(default_factory=dict)
 
-    query: StockQuery = Field(default_factory=StockQuery)
-    stocks_data: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    messages: List[str] = Field(default_factory=list)
-    error_messages: List[str] = Field(default_factory=list)
-    executive_summary: Optional[str] = None
-    comparison_dashboard: Optional[str] = None
+    # Fields for logging and error handling, used by the new ReAct agent
+    messages: list = Field(default_factory=list)
+    error_messages: list = Field(default_factory=list)
+
+    # Fields for final results
+    synthesis_result: Optional[str] = None
     validation_result: Optional[ValidationResult] = None
-    needs_retry: bool = False
-
-    class Config:
-        # Allows the model to work smoothly with LangGraph
-        arbitrary_types_allowed = True

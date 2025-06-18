@@ -1,94 +1,63 @@
+# zeevrispler/stock-researcher/stock-researcher-4b3618e2c0950ebe10c63249519e1b2dbb61748a/agents/news_sentiment.py
+import json
+
 from deepeval.metrics import SummarizationMetric
 from deepeval.test_case import LLMTestCase
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 
 from config import OPENAI_API_KEY, OPENAI_API_BASE
 from models import StockState
 
 
-class NewsAnalysis(BaseModel):
-    """
-    The result of news analysis for a stock.
-    - sentiment: The sentiment of the news, can be "positive", "negative" or "neutral".
-    - notable_events: A list of notable events from the news.
-    - summary: A summary of the news.
-    """
-
+class SentimentAnalysis(BaseModel):
     sentiment: str = Field(
-        ...,
-        description='The sentiment of the news, can be "positive", "negative" or "neutral".',
+        ..., description="The overall sentiment (e.g., 'Positive', 'Negative', 'Neutral')."
     )
-    notable_events: list[str] = Field(
-        ..., description="A list of notable events from the news."
+    confidence_score: float = Field(
+        ..., description="A confidence score for the sentiment analysis, between 0 and 1."
     )
-    summary: str = Field(..., description="A summary of the news.")
+    summary: str = Field(
+        ..., description="A brief summary of the key news driving the sentiment."
+    )
 
 
 class NewsSentimentAgent:
     def __init__(self):
         self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             api_key=OPENAI_API_KEY,
             base_url=OPENAI_API_BASE,
-        ).with_structured_output(NewsAnalysis)
+            temperature=0,
+        ).with_structured_output(SentimentAnalysis)
+        self.validator = SummarizationMetric(threshold=0.8, model="gpt-4o")
 
-    def __call__(self, state: StockState) -> StockState:
-        state.messages.append("Analyzing news sentiment...")
-
-        for ticker in state.query.tickers:
-            # --- THIS IS THE UPDATED SECTION ---
-            # Instead of parsing raw search results, we now use the clean,
-            # synthesized text block produced by the ReAct agent.
-            context = state.stocks_data[ticker].get("market_data", "")
-            if not context:
-                state.error_messages.append(
-                    f"No market data context found for {ticker} to analyze news."
-                )
+    def __call__(self, state: StockState):
+        for ticker, stock_data in state.stocks_data.items():
+            source_text = stock_data.market_data or "No data available."
+            if source_text == "No data available.":
+                stock_data.sentiment_analysis = "No market data to analyze for sentiment."
                 continue
-            # --- END OF UPDATE ---
 
             prompt = f"""
-            Analyze the news sentiment for the stock with the ticker {ticker}.
-            Here is the context:
-            ---
-            {context}
-            ---
-            Respond with a JSON object with the following schema:
-            {{
-                "sentiment": "positive" | "negative" | "neutral",
-                "notable_events": ["event_1", "event_2", ...],
-                "summary": "A summary of the news."
-            }}
-            """
-            news_analysis: NewsAnalysis = self.llm.invoke(prompt)
+            Analyze the sentiment of the following market data and news summary for {ticker}.
+            Focus specifically on the news summaries within the text to determine if the overall sentiment is Positive, Negative, or Neutral.
+            Provide a confidence score (0-1) and a brief summary of the key points driving the sentiment.
 
-            metric = SummarizationMetric(
-                threshold=0.7,
-                model="gpt-4o-mini",
-                assessment_questions=[
-                    "Is the summary faithful to the context?",
-                    "Does the summary mention the stock ticker?",
-                    "Does the summary include all the notable events?",
-                ],
-            )
+            Collected Data:
+            {source_text}
+            """
+            response: SentimentAnalysis = self.llm.invoke(prompt)
+
             test_case = LLMTestCase(
                 input=prompt,
-                actual_output=news_analysis.summary,
-                context=[context],
+                actual_output=response.summary,
+                retrieval_context=[source_text]
             )
-            metric.measure(test_case)
-            print(f"Summarization metric score: {metric.score}")
-            if metric.score < 0.7:
-                state.error_messages.append(
-                    f"Summarization metric score for {ticker} is below threshold."
-                )
-                news_analysis.summary = (
-                    "The summary was not faithful to the context."
-                )
+            self.validator.measure(test_case)
 
-            if ticker not in state.stocks_data:
-                state.stocks_data[ticker] = {}
-            state.stocks_data[ticker]["news_analysis"] = news_analysis.dict()
-
+            if self.validator.is_successful():
+                stock_data.sentiment_analysis = json.dumps(response.dict(), indent=2)
+            else:
+                stock_data.sentiment_analysis = "Failed to generate a faithful sentiment analysis."
         return state
