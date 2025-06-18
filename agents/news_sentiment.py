@@ -1,8 +1,16 @@
 from deepeval.metrics import FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
+from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from models import NewsAnalysis
 from config import OPENAI_API_KEY, OPENAI_API_BASE
+
+
+class NewsAnalysis(BaseModel):
+    sentiment: str = Field(description='The sentiment of the news, can be "positive", "negative" or "neutral".')
+    notable_events: list[str] = Field(description="A list of notable events from the news.")
+    summary: str = Field(description="A summary of the news.")
+    confidence_score: float = Field(description="Confidence 0-1 in this analysis")
+    data_quality: str = Field(description="'high', 'medium', 'low' based on source data")
 
 
 class NewsSentimentAgent:
@@ -17,36 +25,17 @@ class NewsSentimentAgent:
         self.llm = ChatOpenAI(**kwargs).with_structured_output(NewsAnalysis)
         self.validator = FaithfulnessMetric(threshold=0.7, model="gpt-4o-mini")
 
-    def _should_validate(self, analysis: NewsAnalysis) -> bool:
-        """Determine if deep validation is needed based on confidence."""
-        # Use DeepEval only when confidence is low or data quality is poor
-        if analysis.confidence_score < 0.7:
-            return True
-        if analysis.data_quality == "low":
-            return True
-        # Always validate if we found no notable events (suspicious)
-        if not analysis.notable_events or len(analysis.notable_events) == 0:
-            return True
-        return False
-
     def __call__(self, state: dict) -> dict:
-        print("Running NewsSentimentAgent...")
-        state["messages"].append("Analyzing news sentiment...")
+        print("📰 Analyzing news sentiment...")
 
         for ticker in state["query"]["tickers"]:
             context = state["stocks_data"][ticker].get("market_data", "")
             if not context:
-                state["error_messages"].append(
-                    f"No market data context found for {ticker} to analyze news."
-                )
+                state["error_messages"].append(f"No market data context found for {ticker} to analyze news.")
                 continue
 
             prompt = f"""
-            Analyze the news sentiment for stock {ticker}.
-            Context:
-            ---
-            {context}
-            ---
+            Analyze the news sentiment for the stock with the ticker {ticker}.
 
             Provide confidence_score (0-1) based on:
             - Amount of relevant news found
@@ -58,6 +47,10 @@ class NewsSentimentAgent:
             - "medium": Some relevant information 
             - "low": Limited or unclear sources
 
+            Context:
+            ---
+            {context}
+            ---
             Respond with JSON matching the NewsAnalysis schema.
             """
 
@@ -65,47 +58,29 @@ class NewsSentimentAgent:
                 news_analysis: NewsAnalysis = self.llm.invoke(prompt)
 
                 # Only run expensive validation if confidence/quality is low
-                if self._should_validate(news_analysis):
-                    state["messages"].append(f"-> {ticker} low confidence, running validation...")
-
+                if news_analysis.confidence_score < 0.7 or news_analysis.data_quality == "low":
                     test_case = LLMTestCase(
                         input=prompt,
                         actual_output=str(news_analysis.model_dump()),
                         retrieval_context=[context]
                     )
-
                     self.validator.measure(test_case)
                     score = self.validator.score
-
                     if score < 0.7:
-                        state["messages"].append(
-                            f"-> {ticker} news analysis failed validation ({score})"
-                        )
-                    else:
-                        state["messages"].append(
-                            f"-> {ticker} news analysis validated ({score})"
-                        )
-                else:
-                    state["messages"].append(
-                        f"-> {ticker} high confidence ({news_analysis.confidence_score}), skipping validation"
-                    )
+                        print(f"News analysis may not be fully faithful to source ({score})")
 
                 if ticker not in state["stocks_data"]:
                     state["stocks_data"][ticker] = {}
-                state["stocks_data"][ticker]["news_analysis"] = news_analysis
+                state["stocks_data"][ticker]["news_analysis"] = news_analysis.model_dump()
 
             except Exception as e:
                 state["error_messages"].append(f"Error analyzing news for {ticker}: {str(e)}")
-                # Add default values so workflow can continue
                 if ticker not in state["stocks_data"]:
                     state["stocks_data"][ticker] = {}
-                default_analysis = NewsAnalysis(
-                    sentiment="neutral",
-                    notable_events=["Analysis failed"],
-                    summary="Failed to analyze news sentiment",
-                    confidence_score=0.0,
-                    data_quality="low"
-                )
-                state["stocks_data"][ticker]["news_analysis"] = default_analysis
+                state["stocks_data"][ticker]["news_analysis"] = {
+                    "sentiment": "neutral",
+                    "notable_events": ["Analysis failed"],
+                    "summary": "Failed to analyze news sentiment"
+                }
 
         return state

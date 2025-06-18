@@ -3,36 +3,31 @@ from deepeval.test_case import LLMTestCase
 
 
 class ValidationAgent:
-    """Final validation"""
-
     def __init__(self):
         self.faithfulness = FaithfulnessMetric(threshold=0.7, model="gpt-4o-mini")
         self.relevancy = AnswerRelevancyMetric(threshold=0.7, model="gpt-4o-mini")
 
     def __call__(self, state: dict) -> dict:
-        """Validate final output"""
+        print("✅ Validating report...")
+
         if not state.get("executive_summary"):
             return state
 
-        # Build context from the market data that was used
         context = []
         for ticker, data in state["stocks_data"].items():
-            # Include the market data that was fetched
             market_data = data.get("market_data", "")
             if market_data:
                 context.append(market_data)
 
-            # Include the processed analysis
             news = data.get("news_analysis", {})
             risk = data.get("risk_assessment", {})
             context.append(f"{ticker} news analysis: {news}")
             context.append(f"{ticker} risk assessment: {risk}")
 
-        # Test faithfulness
         faith_test = LLMTestCase(
             input=str(state["query"]),
             actual_output=state["executive_summary"],
-            retrieval_context=context  # Changed from 'context' to 'retrieval_context'
+            retrieval_context=context
         )
 
         try:
@@ -42,7 +37,6 @@ class ValidationAgent:
             print(f"Faithfulness validation error: {e}")
             faith_score = 0.0
 
-        # Test relevancy
         try:
             self.relevancy.measure(faith_test)
             rel_score = self.relevancy.score
@@ -50,15 +44,10 @@ class ValidationAgent:
             print(f"Relevancy validation error: {e}")
             rel_score = 0.0
 
-        print(f"Faithfulness score: {faith_score}, Relevancy score: {rel_score}")
-
-        # Store results
         passed = faith_score > 0.7 and rel_score > 0.7
         validation_result = state.get("validation_result", {})
-        if validation_result:
-            attempt = validation_result.get("attempt", 1) + 1
-        else:
-            attempt = 1
+        attempt = validation_result.get("attempt", 1) + 1 if validation_result else 1
+
         state["validation_result"] = {
             "passed": passed,
             "scores": {
@@ -71,10 +60,7 @@ class ValidationAgent:
         if not passed and attempt == 1:
             state["needs_retry"] = True
             state["executive_summary"] = None
-            state["messages"].append(f"Retrying - F:{faith_score}, R:{rel_score}")
         elif not passed:
-            state["messages"].append("Note: Some claims could not be fully verified")
-        else:
-            state["messages"].append(f"Validated - F:{faith_score}, R:{rel_score}")
+            print("Note: Some claims could not be fully verified")
 
         return state

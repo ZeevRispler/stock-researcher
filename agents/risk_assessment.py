@@ -1,8 +1,18 @@
+import json
 from deepeval.metrics import FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
+from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from models import RiskData
 from config import OPENAI_API_KEY, OPENAI_API_BASE
+
+
+class RiskData(BaseModel):
+    volatility: str = Field(..., description='The volatility of the stock, can be "high", "medium" or "low".')
+    beta: float | None = Field(..., description="The beta of the stock.")
+    risk_factors: list[str] = Field(..., description="A list of risk factors for the stock.")
+    risk_score: int = Field(..., description="A score from 1-10 (10 = highest risk).")
+    confidence_score: float = Field(..., description="Confidence 0-1 in this assessment")
+    data_completeness: str = Field(..., description="'complete', 'partial', 'limited'")
 
 
 class RiskAssessmentAgent:
@@ -17,36 +27,18 @@ class RiskAssessmentAgent:
         self.llm = ChatOpenAI(**kwargs).with_structured_output(RiskData)
         self.validator = FaithfulnessMetric(threshold=0.7, model="gpt-4o-mini")
 
-    def _should_validate(self, risk_data: RiskData) -> bool:
-        """Determine if deep validation is needed based on confidence."""
-        # Use DeepEval only when confidence is low or data is incomplete
-        if risk_data.confidence_score < 0.7:
-            return True
-        if risk_data.data_completeness in ["limited", "partial"]:
-            return True
-        # Always validate if beta is missing (important metric)
-        if risk_data.beta is None:
-            return True
-        return False
-
     def __call__(self, state: dict) -> dict:
-        print("Running RiskAssessmentAgent...")
-        state["messages"].append("Assessing stock risks...")
+        print("⚠️ Assessing stock risks...")
 
         for ticker in state["query"]["tickers"]:
             context = state["stocks_data"][ticker].get("market_data", "")
             if not context:
-                state["error_messages"].append(
-                    f"No market data context found for {ticker} to assess risk."
-                )
+                state["error_messages"].append(f"No market data context found for {ticker} to assess risk.")
                 continue
 
             prompt = f"""
-            Analyze the risk profile for stock {ticker}.
-            Context:
-            ---
-            {context}
-            ---
+            Analyze the risk profile for the stock with the ticker {ticker}, based on the following context.
+            Pay special attention to market volatility, beta, and any mentioned competitive, regulatory, or operational risks.
 
             Provide confidence_score (0-1) based on:
             - Availability of key metrics (beta, volatility data)
@@ -58,6 +50,11 @@ class RiskAssessmentAgent:
             - "partial": Some metrics missing but enough for assessment
             - "limited": Missing critical risk information
 
+            Context:
+            ---
+            {context}
+            ---
+
             Respond with JSON matching the RiskData schema.
             """
 
@@ -65,44 +62,26 @@ class RiskAssessmentAgent:
                 risk_data: RiskData = self.llm.invoke(prompt)
 
                 # Only run expensive validation if confidence/completeness is low
-                if self._should_validate(risk_data):
-                    state["messages"].append(f"-> {ticker} low confidence, running validation...")
-
+                if risk_data.confidence_score < 0.7 or risk_data.data_completeness in ["limited", "partial"]:
                     test_case = LLMTestCase(
                         input=prompt,
-                        actual_output=str(risk_data.model_dump()),
+                        actual_output=json.dumps(risk_data.dict()),
                         retrieval_context=[context]
                     )
-
                     self.validator.measure(test_case)
                     score = self.validator.score
-
                     if score < 0.7:
-                        state["messages"].append(
-                            f"-> {ticker} risk assessment failed validation ({score})"
-                        )
-                    else:
-                        state["messages"].append(
-                            f"-> {ticker} risk assessment validated ({score})"
-                        )
-                else:
-                    state["messages"].append(
-                        f"-> {ticker} high confidence ({risk_data.confidence_score}), skipping validation"
-                    )
+                        print(f"Risk assessment validation warning ({score})")
 
-                state["stocks_data"][ticker]["risk_assessment"] = risk_data
+                state["stocks_data"][ticker]["risk_assessment"] = risk_data.model_dump()
 
             except Exception as e:
                 state["error_messages"].append(f"Error assessing risk for {ticker}: {str(e)}")
-                # Add default values so workflow can continue
-                default_risk = RiskData(
-                    volatility="unknown",
-                    beta=None,
-                    risk_factors=["Risk assessment failed"],
-                    risk_score=5,
-                    confidence_score=0.0,
-                    data_completeness="limited"
-                )
-                state["stocks_data"][ticker]["risk_assessment"] = default_risk
+                state["stocks_data"][ticker]["risk_assessment"] = {
+                    "volatility": "unknown",
+                    "beta": None,
+                    "risk_factors": ["Risk assessment failed"],
+                    "risk_score": 5,
+                }
 
         return state
