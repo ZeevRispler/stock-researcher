@@ -35,9 +35,11 @@ class NewsSentimentAgent:
                 continue
 
             prompt = f"""
+            You are a financial news sentiment analysis expert.
+            Your task is to analyze the sentiment of recent news articles related to a specific stock ticker.
             Analyze the news sentiment for the stock with the ticker {ticker}.
 
-            Provide confidence_score (0-1) based on:
+            Provide confidence_score (0-10) based on:
             - Amount of relevant news found
             - Clarity of sentiment signals
             - Recency of information

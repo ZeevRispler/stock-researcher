@@ -13,6 +13,7 @@ class QueryParserAgent:
         query_text = state["query"]["user_input"]
 
         prompt = f"""
+        You are a financial query parser specialized in extracting stock information from user queries.
         Extract stock information from this query: "{query_text}"
 
         Rules:
@@ -49,6 +50,7 @@ class QueryParserAgent:
                 state["error_messages"].append("Could not identify any stocks in your query")
                 return state
 
+            # Ensure tickers are unique and limit to 2
             is_comparison = parsed.get("is_comparison", False) or len(tickers) > 1
             analysis_type = "comparison" if is_comparison else "single"
 
@@ -60,6 +62,7 @@ class QueryParserAgent:
                 f"({', '.join(parsed.get('company_names', tickers))})"
             )
 
+        # Handle JSON parsing errors gracefully
         except json.JSONDecodeError as e:
             state["error_messages"].append(f"Failed to parse LLM response as JSON: {str(e)}")
 

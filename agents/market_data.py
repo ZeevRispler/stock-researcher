@@ -27,6 +27,7 @@ class MarketDataAgent:
 
         for ticker in tickers:
             prompt = f"""
+            You are a financial analyst tasked with gathering comprehensive market data for a specific stock.
             Gather comprehensive, up-to-date market data for the stock with ticker {ticker}.
             You must find and include the following information in your final answer:
             1.  Current stock price.
