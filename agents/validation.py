@@ -68,10 +68,10 @@ class ValidationAgent:
         if not passed and attempt == 1:
             state["needs_retry"] = True
             state["executive_summary"] = None
-            state["messages"].append(f"Retrying - F:{faith_score:.2f}, R:{rel_score:.2f}")
+            state["messages"].append(f"Retrying - F:{faith_score}, R:{rel_score}")
         elif not passed:
             state["messages"].append("Note: Some claims could not be fully verified")
         else:
-            state["messages"].append(f"Validated - F:{faith_score:.2f}, R:{rel_score:.2f}")
+            state["messages"].append(f"Validated - F:{faith_score}, R:{rel_score}")
 
         return state
